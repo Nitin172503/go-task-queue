@@ -17,9 +17,31 @@ import (
 
 func main() {
 	addr := os.Getenv("ADDR")
-	if addr == "" { addr = ":8080" }
+	if addr == "" {
+		addr = ":8080"
+	}
 
-	b := broker.NewMemoryBroker()
+	// Select broker based on BROKER env var
+	// BROKER=redis REDIS_ADDR=localhost:6379 ./taskqueue
+	// BROKER=memory ./taskqueue  (default)
+	var b broker.Broker
+	switch os.Getenv("BROKER") {
+	case "redis":
+		redisAddr := os.Getenv("REDIS_ADDR")
+		if redisAddr == "" {
+			redisAddr = "localhost:6379"
+		}
+		rb := broker.NewRedisBroker(redisAddr)
+		if err := rb.Ping(); err != nil {
+			log.Fatalf("[server] cannot connect to Redis at %s: %v", redisAddr, err)
+		}
+		log.Printf("[server] using Redis broker at %s", redisAddr)
+		b = rb
+	default:
+		log.Println("[server] using in-memory broker")
+		b = broker.NewMemoryBroker()
+	}
+
 	pool := worker.NewPool(b, 5, 200*time.Millisecond)
 	h := api.NewHandler(b, pool)
 
@@ -32,7 +54,12 @@ func main() {
 	})
 	h.RegisterRoutes(r)
 
-	srv := &http.Server{Addr: addr, Handler: r, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second}
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go pool.Start(ctx)
