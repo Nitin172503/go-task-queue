@@ -16,6 +16,7 @@ type Broker interface {
 	Dequeue() (*models.Task, bool)
 	Acknowledge(id string, result string, err error) error
 	GetTask(id string) (*models.Task, error)
+	ListTasks(status string) ([]*models.Task, error)
 	Stats() models.QueueStats
 }
 
@@ -143,6 +144,19 @@ func (mb *MemoryBroker) GetTask(id string) (*models.Task, error) {
 	}
 	c := *task
 	return &c, nil
+}
+
+func (mb *MemoryBroker) ListTasks(status string) ([]*models.Task, error) {
+	mb.mu.Lock()
+	defer mb.mu.Unlock()
+	result := make([]*models.Task, 0, len(mb.tasks))
+	for _, task := range mb.tasks {
+		if status == "" || string(task.Status) == status {
+			c := *task
+			result = append(result, &c)
+		}
+	}
+	return result, nil
 }
 
 func (mb *MemoryBroker) Stats() models.QueueStats {

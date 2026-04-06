@@ -18,20 +18,47 @@ type Handler struct {
 func NewHandler(b broker.Broker, p *worker.Pool) *Handler { return &Handler{broker: b, pool: p} }
 
 func (h *Handler) RegisterRoutes(r *mux.Router) {
+	r.HandleFunc("/tasks", h.ListTasks).Methods(http.MethodGet)
 	r.HandleFunc("/tasks", h.EnqueueTask).Methods(http.MethodPost)
 	r.HandleFunc("/tasks/{id}", h.GetTask).Methods(http.MethodGet)
 	r.HandleFunc("/stats", h.GetStats).Methods(http.MethodGet)
 	r.HandleFunc("/healthz", h.Health).Methods(http.MethodGet)
 }
 
+func (h *Handler) ListTasks(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	validStatuses := map[string]bool{
+		"":           true,
+		"pending":    true,
+		"processing": true,
+		"completed":  true,
+		"failed":     true,
+	}
+	if !validStatuses[status] {
+		writeError(w, http.StatusBadRequest, "invalid status filter — use: pending, processing, completed, failed")
+		return
+	}
+	tasks, err := h.broker.ListTasks(status)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"tasks": tasks,
+		"count": len(tasks),
+	})
+}
+
 func (h *Handler) EnqueueTask(w http.ResponseWriter, r *http.Request) {
 	var req models.EnqueueRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error()); return
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	task, err := h.broker.Enqueue(req)
 	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, err.Error()); return
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
 	}
 	writeJSON(w, http.StatusAccepted, task)
 }
@@ -39,7 +66,8 @@ func (h *Handler) EnqueueTask(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.broker.GetTask(mux.Vars(r)["id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error()); return
+		writeError(w, http.StatusNotFound, err.Error())
+		return
 	}
 	writeJSON(w, http.StatusOK, task)
 }
