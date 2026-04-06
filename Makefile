@@ -1,7 +1,7 @@
 BINARY=taskqueue
 CMD=./cmd/server
 
-.PHONY: build run test tidy clean
+.PHONY: build run test tidy clean docker-up docker-down docker-logs
 
 build:
 	go build -o bin/$(BINARY) $(CMD)
@@ -17,3 +17,12 @@ tidy:
 
 clean:
 	rm -rf bin/
+
+docker-up:
+	docker compose up --build -d
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f server
